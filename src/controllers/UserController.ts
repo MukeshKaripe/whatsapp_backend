@@ -41,6 +41,7 @@ declare module 'express-serve-static-core' {
 export const SendOtpViaSms = asyncHandler(async (req: Request, res: Response) => {
   try {
     const mobile = req.body?.mobile;
+    console.log("Received mobile:", mobile);
 
     // Validate the request body
     await signUpSchema.validateAsync(req.body);
@@ -48,23 +49,48 @@ export const SendOtpViaSms = asyncHandler(async (req: Request, res: Response) =>
     // Generate the OTP and timestamp
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const otpCreatedAt = moment().unix();
+
+    // Store in session
     req.session.userDetails = { sentAt: otpCreatedAt, mobile: mobile, otp: otp };
 
-    // Send the SMS (await if it's an async operation)
+    // Send the SMS (commented out)
     // await sendTextMessage(mobile, otp);
 
     // Set the session ID in the response headers
     res.setHeader('sessionId', req.sessionID);
+
+    // ✅ FIXED: Proper template literal syntax
+    const responseMessage = `Verification code ${otp} sent to ${mobile}. Valid for the next 10 mins.`;
+
+    console.log("Generated OTP:", otp); // For development only
+    console.log("Sending response:", responseMessage);
+
     res.status(200).json({
       success: true,
-      message: `Verification code ${otp} sent to ${mobile}. Valid for the next 10 mins.`,
+      message: responseMessage,
+      // 🔥 For development only - remove in production
+      otp: otp, // This will help you see the OTP in frontend
     });
+
   } catch (error: any) {
-    // Catch any errors and send a 500 error response
-    res.status(500).json({ success: false, message: error.message });
+    console.error("Error in SendOtpViaSms:", error);
+
+    // Handle Joi validation errors
+    if (error.isJoi) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid input: " + error.details[0].message
+      });
+      return;
+    }
+
+    // Handle other errors
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to send OTP"
+    });
   }
 })
-
 export const verifyOtp = asyncHandler(async (req: Request, res: Response) => {
   const curOTP = req.body?.otp;
   await loginSchema.validateAsync(req.body)
